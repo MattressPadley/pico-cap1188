@@ -6,6 +6,8 @@ A comprehensive C++ library for the CAP1188 8-channel capacitive touch sensor, d
 
 - **Complete CAP1188 Support**: Full abstraction of all chip functionality
 - **8-Channel Touch Sensing**: Individual channel configuration and monitoring
+- **Runtime Configuration Changes**: Dynamic settings updates without reinitialization
+- **Human-Readable Configuration**: Intuitive enum-based configuration system
 - **Integrated LED Control**: 8 LED drivers with advanced effects support
 - **Pre-Initialized I2C Pattern**: Proper multi-device I2C support
 - **I2C Communication**: Configurable I2C addresses (0x28-0x2D)
@@ -260,6 +262,77 @@ Error setChannelConfig(TouchChannel channel, const TouchConfig& config);
 Error enableMultiTouch(bool enable = true);
 ```
 
+### Runtime Configuration Changes
+
+The library supports dynamic configuration updates without requiring device reinitialization, enabling adaptive touch sensing based on environmental conditions or user preferences.
+
+#### Granular Updates (Individual Settings)
+
+```cpp
+// Update individual settings without affecting others
+Error updateSensitivity(TouchSensitivity sensitivity);
+Error updateResponseSpeed(TouchResponseSpeed speed);
+Error updateStability(TouchStability stability);
+Error updateNoiseFiltering(NoiseFiltering filtering);
+Error updateLEDBehavior(LEDBehavior behavior, LEDSpeed speed = LEDSpeed::MEDIUM);
+Error updateMultiTouchMode(MultiTouchMode mode);
+
+// Example: Increase sensitivity for better detection
+touch_sensor.updateSensitivity(TouchSensitivity::HIGH);
+```
+
+#### Batch Updates (Setting Groups)
+
+```cpp
+// Update related settings together for optimal performance
+Error updateTouchSettings(TouchSensitivity sensitivity, TouchResponseSpeed speed, TouchStability stability);
+Error updateLEDSettings(LEDBehavior behavior, LEDSpeed speed, bool active_high);
+Error updateNoiseSettings(NoiseFiltering filtering, bool digital_filter, bool analog_filter);
+Error updatePowerSettings(bool interrupts, bool deep_sleep);
+
+// Example: Configure for noisy environment
+touch_sensor.updateTouchSettings(
+    TouchSensitivity::LOW,        // Reduce sensitivity
+    TouchResponseSpeed::SLOW,     // More stable response
+    TouchStability::VERY_STABLE   // Maximum filtering
+);
+```
+
+#### Smart Configuration Merging
+
+```cpp
+// Apply only changed settings automatically
+Error updateConfiguration(const DeviceConfig& new_config, bool force_all = false);
+
+// Example: Only updates changed settings
+DeviceConfig config = touch_sensor.getConfiguration();
+config.sensitivity = TouchSensitivity::HIGH;
+config.led_behavior = LEDBehavior::PULSE_ON_TOUCH;
+// Only these two settings will be updated
+touch_sensor.updateConfiguration(config);
+```
+
+#### Per-Channel Runtime Updates
+
+```cpp
+// Customize individual channels dynamically
+Error updateChannelSensitivity(TouchChannel channel, TouchSensitivity sensitivity);
+Error updateChannelLEDBehavior(TouchChannel channel, LEDBehavior behavior);
+Error updateChannelConfiguration(TouchChannel channel, const TouchConfig& new_config, bool force_all = false);
+
+// Example: High sensitivity for finger touch, low for gloved hand
+touch_sensor.updateChannelSensitivity(TouchChannel::C1, TouchSensitivity::HIGH);
+touch_sensor.updateChannelSensitivity(TouchChannel::C2, TouchSensitivity::LOW);
+```
+
+#### Runtime Configuration Features
+
+- **Change Detection**: Automatically detects and applies only modified settings
+- **Atomic Updates**: All changes succeed or none are applied (rollback on failure)
+- **Validation**: Prevents invalid configurations and disruptive changes
+- **Performance Optimized**: Minimizes I2C transactions through intelligent batching
+- **Non-Disruptive**: Maintains touch detection during configuration updates
+
 ## Design Pattern: Pre-Initialized I2C
 
 This library implements the **Pre-Initialized I2C Pattern** for proper multi-device support:
@@ -298,10 +371,24 @@ touch3.begin();
 
 The library includes several examples:
 
-- **basic_touch**: Simple touch detection with console output
-- **led_control**: LED effects and touch-LED linking
+- **basic_touch**: Touch detection with runtime configuration demonstrations
+- **led_control**: LED effects and touch-LED linking (coming soon)
 - **interrupt_driven**: Interrupt-based touch handling (coming soon)
 - **multi_device**: Multiple CAP1188 devices (coming soon)
+
+### Runtime Configuration Demo
+
+The `basic_touch` example includes a live demonstration of runtime configuration changes that cycles through different settings every 15 seconds:
+
+1. **Sensitivity Adjustment** - Demonstrates `updateSensitivity()`
+2. **Response Speed Changes** - Shows `updateResponseSpeed()`
+3. **LED Effect Updates** - Illustrates `updateLEDBehavior()`
+4. **Batch Setting Updates** - Uses `updateTouchSettings()`
+5. **Smart Configuration Merging** - Demonstrates `updateConfiguration()`
+6. **Per-Channel Customization** - Shows `updateChannelSensitivity()`
+7. **Reset to Defaults** - Returns to baseline configuration
+
+This provides a hands-on demonstration of how runtime configuration changes affect touch behavior and LED feedback in real-time.
 
 ## Configuration Options
 

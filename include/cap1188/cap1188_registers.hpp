@@ -56,9 +56,11 @@ constexpr uint8_t REG_SENSOR_INPUT_ENABLE = 0x21;
 constexpr uint8_t REG_SENSOR_INPUT_CONFIGURATION = 0x22;
 constexpr uint8_t REG_SENSOR_INPUT_CONFIGURATION_2 = 0x23;
 constexpr uint8_t REG_AVERAGING_AND_SAMPLING_CONFIG = 0x24;
+constexpr uint8_t REG_AVERAGING = 0x24;  // Alias for averaging configuration
 constexpr uint8_t REG_CALIBRATION_ACTIVATE = 0x26;
 constexpr uint8_t REG_INTERRUPT_ENABLE = 0x27;
 constexpr uint8_t REG_REPEAT_RATE_ENABLE = 0x28;
+constexpr uint8_t REG_REPEAT_RATE = 0x28;  // Alias for repeat rate configuration
 
 // Multiple touch configuration
 constexpr uint8_t REG_MULTIPLE_TOUCH_CONFIG = 0x2A;

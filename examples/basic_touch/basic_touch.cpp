@@ -9,14 +9,13 @@ using namespace CAP1188;
 constexpr uint8_t CAP1188_ADDRESS = DEFAULT_I2C_ADDRESS;  // 0x29
 constexpr uint SDA_PIN = PICO_DEFAULT_I2C_SDA_PIN;        // GPIO 4
 constexpr uint SCL_PIN = PICO_DEFAULT_I2C_SCL_PIN;        // GPIO 5
-constexpr uint RESET_PIN = 22;                            // Optional: GPIO 22 for reset
+// Reset pin disabled by default (no GPIO interference)
 constexpr uint BAUDRATE = 100000;                         // 100 kHz I2C
 
-// Optional: LED pins for visual feedback (connect LEDs with current limiting resistors)
-constexpr uint LED_PINS[8] = {10, 11, 12, 13, 14, 15, 16, 17};
+// Note: Using CAP1188's built-in LEDs instead of external GPIO LEDs
 
 // Global CAP1188 device instance
-CAP1188Device touch_sensor(i2c_default, CAP1188_ADDRESS, RESET_PIN);
+CAP1188Device touch_sensor(i2c_default, CAP1188_ADDRESS);  // No reset pin
 
 // Track previous touch state to detect changes
 uint8_t previous_touched = 0x00;
@@ -68,35 +67,26 @@ void on_error(Error error, const char* message) {
     printf("\n");
 }
 
-// Initialize external LEDs (optional)
-void init_external_leds() {
-    for (int i = 0; i < 8; ++i) {
-        gpio_init(LED_PINS[i]);
-        gpio_set_dir(LED_PINS[i], GPIO_OUT);
-        gpio_put(LED_PINS[i], false);  // Start with LEDs off
-    }
-}
+// External LEDs removed - using CAP1188's built-in LEDs only
 
-// Update external LEDs based on touch state
-void update_external_leds(uint8_t touched_channels) {
-    for (int i = 0; i < 8; ++i) {
-        bool touched = (touched_channels & (1 << i)) != 0;
-        gpio_put(LED_PINS[i], touched);
-    }
-}
+// External LED update removed - using CAP1188's built-in LEDs only
 
 // Configure the CAP1188 device
 Error configure_device() {
     printf("Configuring CAP1188...\n");
     
-    // Create device configuration
+    // Create device configuration using human-readable settings
     DeviceConfig config;
-    config.multi_touch_enabled = true;        // Allow multiple simultaneous touches
-    config.interrupts_enabled = false;        // Disable interrupts (not using INT pin)
-    config.digital_noise_filter = true;       // Enable noise filtering
-    config.analog_noise_filter = true;
-    config.led_active_high = false;           // CAP1188 LEDs are typically active low
-    config.gain = Gain::GAIN_1X;              // Start with 1x gain
+    config.sensitivity = TouchSensitivity::MEDIUM;           // Balanced touch sensitivity
+    config.response_speed = TouchResponseSpeed::MEDIUM;      // Standard response speed
+    config.stability = TouchStability::BALANCED;             // Good balance of speed vs stability
+    config.noise_filtering = NoiseFiltering::MEDIUM;         // Standard noise filtering
+    config.multi_touch = MultiTouchMode::ENABLED;           // Allow multiple touches
+    config.led_behavior = LEDBehavior::TOUCH_FEEDBACK;       // LEDs on while touched
+    config.led_speed = LEDSpeed::MEDIUM;                     // Standard LED timing
+    config.led_active_high = false;                         // CAP1188 LEDs are active low
+    config.interrupts_enabled = false;                      // Disable interrupts (not using INT pin)
+    config.auto_recalibration = true;                       // Enable auto-calibration
     
     Error err = touch_sensor.setConfiguration(config);
     if (err != Error::SUCCESS) {
@@ -104,11 +94,12 @@ Error configure_device() {
         return err;
     }
     
-    // Configure individual channels
+    // Configure individual channels using human-readable settings
     TouchConfig channel_config;
-    channel_config.threshold = 0x40;          // Moderate sensitivity
     channel_config.enabled = true;
-    channel_config.linked_led = true;         // Link LEDs to touch detection
+    channel_config.sensitivity = TouchSensitivity::USE_GLOBAL;  // Use device-wide sensitivity
+    channel_config.led_behavior = LEDBehavior::USE_GLOBAL;      // Use device-wide LED behavior
+    channel_config.repeat_enabled = false;                      // No auto-repeat
     channel_config.noise_threshold = 0x25;
     
     err = touch_sensor.setChannelConfig(TouchChannel::ALL, channel_config);
@@ -173,6 +164,7 @@ void print_device_info() {
 void touch_loop() {
     printf("Starting touch detection loop...\n");
     printf("Touch the capacitive pads to see detection events.\n");
+    printf("Watch for runtime configuration demonstrations every 15 seconds.\n");
     printf("Press Ctrl+C to exit.\n\n");
     
     while (true) {
@@ -198,8 +190,7 @@ void touch_loop() {
                 }
             }
             
-            // Update external LEDs
-            update_external_leds(current_touched);
+            // CAP1188's built-in LEDs will update automatically via linked_led configuration
             
             previous_touched = current_touched;
         }
@@ -217,6 +208,70 @@ void touch_loop() {
                 printf("Warning: Baseline out of range detected\n");
             }
             last_status_check = now;
+        }
+        
+        // Demonstrate runtime configuration changes every 15 seconds
+        static uint32_t last_config_demo = 0;
+        static int demo_stage = 0;
+        if (now - last_config_demo > 15000) {  // Every 15 seconds
+            switch (demo_stage) {
+                case 0:
+                    printf("\n--- Runtime Config Demo: Increasing sensitivity ---\n");
+                    touch_sensor.updateSensitivity(TouchSensitivity::HIGH);
+                    printf("Sensitivity updated to HIGH\n\n");
+                    break;
+                case 1:
+                    printf("\n--- Runtime Config Demo: Faster response ---\n");
+                    touch_sensor.updateResponseSpeed(TouchResponseSpeed::FAST);
+                    printf("Response speed updated to FAST\n\n");
+                    break;
+                case 2:
+                    printf("\n--- Runtime Config Demo: LED pulse effect ---\n");
+                    touch_sensor.updateLEDBehavior(LEDBehavior::PULSE_ON_TOUCH, LEDSpeed::FAST);
+                    printf("LED behavior updated to PULSE_ON_TOUCH with FAST speed\n\n");
+                    break;
+                case 3:
+                    printf("\n--- Runtime Config Demo: Batch touch settings ---\n");
+                    touch_sensor.updateTouchSettings(
+                        TouchSensitivity::MEDIUM,
+                        TouchResponseSpeed::MEDIUM,
+                        TouchStability::BALANCED
+                    );
+                    printf("Touch settings updated to balanced defaults\n\n");
+                    break;
+                case 4:
+                    printf("\n--- Runtime Config Demo: Smart configuration merge ---\n");
+                    {
+                        DeviceConfig new_config = touch_sensor.getConfiguration();
+                        new_config.sensitivity = TouchSensitivity::LOW;
+                        new_config.led_behavior = LEDBehavior::TOUCH_FEEDBACK;
+                        new_config.noise_filtering = NoiseFiltering::HEAVY;
+                        // Only changed settings will be applied
+                        touch_sensor.updateConfiguration(new_config);
+                        printf("Configuration merged: LOW sensitivity, TOUCH_FEEDBACK LEDs, HEAVY noise filtering\n\n");
+                    }
+                    break;
+                case 5:
+                    printf("\n--- Runtime Config Demo: Per-channel sensitivity ---\n");
+                    touch_sensor.updateChannelSensitivity(TouchChannel::C1, TouchSensitivity::VERY_HIGH);
+                    touch_sensor.updateChannelSensitivity(TouchChannel::C2, TouchSensitivity::HIGH);
+                    printf("Channel C1 set to VERY_HIGH sensitivity, C2 set to HIGH sensitivity\n\n");
+                    break;
+                default:
+                    printf("\n--- Runtime Config Demo: Reset to defaults ---\n");
+                    touch_sensor.updateTouchSettings(
+                        TouchSensitivity::MEDIUM,
+                        TouchResponseSpeed::MEDIUM,
+                        TouchStability::BALANCED
+                    );
+                    touch_sensor.updateLEDBehavior(LEDBehavior::TOUCH_FEEDBACK, LEDSpeed::MEDIUM);
+                    touch_sensor.updateNoiseFiltering(NoiseFiltering::MEDIUM);
+                    printf("All settings reset to defaults\n\n");
+                    demo_stage = -1; // Will wrap to 0 on increment
+                    break;
+            }
+            demo_stage++;
+            last_config_demo = now;
         }
         
         // Small delay to prevent excessive polling
@@ -237,12 +292,13 @@ int main() {
     // Wait a moment for console to initialize
     sleep_ms(1000);
     
-    printf("CAP1188 Basic Touch Example\n");
-    printf("===========================\n");
-    printf("This example demonstrates the Pre-Initialized I2C Pattern:\n");
-    printf("- Application handles I2C hardware initialization\n");
-    printf("- Device library only handles device communication\n");
-    printf("- Enables proper multi-device I2C support\n\n");
+    printf("CAP1188 Basic Touch Example with Runtime Configuration\n");
+    printf("======================================================\n");
+    printf("This example demonstrates:\n");
+    printf("- Human-readable CAP1188 configuration system\n");
+    printf("- Runtime configuration changes without reinitialization\n");
+    printf("- No GPIO interference (reset pin disabled by default)\n");
+    printf("- Pre-Initialized I2C Pattern for multi-device support\n\n");
     
     // Initialize I2C hardware (pre-initialized pattern)
     printf("Initializing I2C hardware...\n");
@@ -301,8 +357,7 @@ int main() {
     
     printf("\n");
     
-    // Initialize external LEDs (optional)
-    init_external_leds();
+    // Using CAP1188's built-in LEDs - no external LED initialization needed
     
     // Set up error callback
     touch_sensor.setErrorCallback(on_error);

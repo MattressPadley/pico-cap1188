@@ -26,6 +26,25 @@ enum class LEDState : uint8_t {
     BREATHE = 4
 };
 
+// Human-readable LED behavior settings
+enum class LEDBehavior : uint8_t {
+    OFF = 0,                // LEDs always off
+    TOUCH_FEEDBACK = 1,     // LED on while touched (default)
+    PULSE_ON_TOUCH = 2,     // Brief pulse when touched
+    BREATHE_ON_TOUCH = 3,   // Breathe effect when touched
+    FADE_ON_RELEASE = 4,    // Fade out when released
+    USE_GLOBAL = 255        // Use device-wide setting (for per-channel config)
+};
+
+// LED animation speed settings
+enum class LEDSpeed : uint8_t {
+    VERY_SLOW = 0,    // 2 second cycles
+    SLOW = 1,         // 1 second cycles
+    MEDIUM = 2,       // 0.5 second cycles (default)
+    FAST = 3,         // 0.25 second cycles
+    VERY_FAST = 4     // 0.125 second cycles
+};
+
 // Power management modes
 enum class PowerMode : uint8_t {
     ACTIVE = 0,
@@ -53,6 +72,51 @@ enum class DeltaSense : uint8_t {
     SENSE_1X = 0x70
 };
 
+// Human-readable touch sensitivity settings
+enum class TouchSensitivity : uint8_t {
+    VERY_LOW = 0,    // For thick materials, gloves - high threshold
+    LOW = 1,         // For normal materials with some interference
+    MEDIUM = 2,      // Default balanced setting
+    HIGH = 3,        // For thin materials, direct contact
+    VERY_HIGH = 4,   // Maximum sensitivity - low threshold
+    USE_GLOBAL = 255 // Use device-wide setting (for per-channel config)
+};
+
+// Touch response speed settings
+enum class TouchResponseSpeed : uint8_t {
+    VERY_SLOW = 0,   // 560ms intervals - most stable
+    SLOW = 1,        // 280ms intervals  
+    MEDIUM = 2,      // 140ms intervals (default)
+    FAST = 3,        // 70ms intervals
+    VERY_FAST = 4    // 35ms intervals - fastest response
+};
+
+// Touch stability vs speed settings
+enum class TouchStability : uint8_t {
+    INSTANT = 0,     // Immediate response, may be jittery
+    FAST = 1,        // Quick response with minimal filtering
+    BALANCED = 2,    // Good balance of speed and stability (default)
+    STABLE = 3,      // Slower but very stable
+    VERY_STABLE = 4  // Slowest but most stable
+};
+
+// Noise filtering settings
+enum class NoiseFiltering : uint8_t {
+    DISABLED = 0,    // No filtering - fastest response
+    LIGHT = 1,       // Basic filtering for clean environments
+    MEDIUM = 2,      // Standard filtering (default)
+    HEAVY = 3,       // Aggressive filtering for noisy environments
+    MAXIMUM = 4      // Maximum filtering for very noisy environments
+};
+
+// Multi-touch configuration
+enum class MultiTouchMode : uint8_t {
+    DISABLED = 0,        // Only single touch allowed
+    ENABLED = 1,         // Multiple touches allowed
+    TWO_FINGER_MAX = 2,  // Maximum 2 simultaneous touches
+    GESTURE_MODE = 3     // Optimized for gesture recognition
+};
+
 // Error codes
 enum class Error : int8_t {
     SUCCESS = 0,
@@ -66,27 +130,61 @@ enum class Error : int8_t {
 
 // Touch configuration for individual channels
 struct TouchConfig {
-    uint8_t threshold = 0x40;          // Touch detection threshold (0-255)
-    bool enabled = true;               // Channel enable state
+    // Channel enable/disable
+    bool enabled = true;
+    
+    // Human-readable per-channel overrides (USE_GLOBAL to use device-wide settings)
+    TouchSensitivity sensitivity = TouchSensitivity::USE_GLOBAL;
+    LEDBehavior led_behavior = LEDBehavior::USE_GLOBAL;
+    
+    // Advanced per-channel settings
+    bool repeat_enabled = false;        // Auto-repeat when held
+    uint8_t custom_threshold = 0;       // 0 = use calculated from sensitivity
+    uint8_t noise_threshold = 0x25;     // Noise detection threshold
+    
+    // Legacy settings (for backward compatibility)
+    uint8_t threshold = 0x40;          // Direct threshold control (overrides sensitivity if custom_threshold == 0)
     bool linked_led = true;            // LED linked to touch detection
-    uint8_t noise_threshold = 0x25;    // Noise detection threshold
     
     TouchConfig() = default;
     TouchConfig(uint8_t thresh, bool en = true, bool led = true, uint8_t noise = 0x25)
-        : threshold(thresh), enabled(en), linked_led(led), noise_threshold(noise) {}
+        : enabled(en), noise_threshold(noise), threshold(thresh), linked_led(led) {}
 };
 
 // Device-wide configuration
 struct DeviceConfig {
-    bool multi_touch_enabled = false;      // Allow multiple simultaneous touches
-    bool interrupts_enabled = true;        // Enable interrupt generation
+    // Hardware interface
+    uint8_t reset_pin = 255;  // GPIO pin for reset (255 = disabled/no reset)
+    
+    // Human-readable touch settings
+    TouchSensitivity sensitivity = TouchSensitivity::MEDIUM;
+    TouchResponseSpeed response_speed = TouchResponseSpeed::MEDIUM;
+    TouchStability stability = TouchStability::BALANCED;
+    
+    // Noise and filtering
+    NoiseFiltering noise_filtering = NoiseFiltering::MEDIUM;
+    bool auto_recalibration = true;
+    bool digital_noise_filter = true;
+    bool analog_noise_filter = true;
+    
+    // Multi-touch settings
+    MultiTouchMode multi_touch = MultiTouchMode::DISABLED;
+    bool multi_touch_enabled = false;
+    
+    // LED behavior
+    LEDBehavior led_behavior = LEDBehavior::TOUCH_FEEDBACK;
+    LEDSpeed led_speed = LEDSpeed::MEDIUM;
+    bool led_active_high = false;  // false = active low, true = active high
+    
+    // Power management
+    bool interrupts_enabled = true;
+    bool deep_sleep_enabled = false;
+    
+    // Legacy settings (for backward compatibility)
     bool max_duration_enabled = false;     // Enable maximum touch duration
-    bool digital_noise_filter = true;      // Enable digital noise filtering
-    bool analog_noise_filter = true;       // Enable analog noise filtering
     bool timeout_enabled = false;          // Enable communication timeout
-    Gain gain = Gain::GAIN_1X;             // Touch sensitivity gain
-    DeltaSense delta_sense = DeltaSense::SENSE_32X; // Delta count scaling
-    bool led_active_high = false;          // LED polarity (false = active low)
+    Gain gain = Gain::GAIN_1X;             // Direct gain control (overrides sensitivity if set)
+    DeltaSense delta_sense = DeltaSense::SENSE_32X; // Direct delta sense control
     uint8_t standby_sensitivity = 0x2F;    // Standby mode sensitivity
     
     DeviceConfig() = default;
@@ -164,5 +262,43 @@ constexpr uint8_t calculateThreshold(uint8_t base_count, uint8_t sensitivity_per
     if (threshold > 255) threshold = 255;
     return static_cast<uint8_t>(threshold);
 }
+
+// Configuration change detection structure
+struct ConfigChangeSet {
+    bool sensitivity_changed : 1;
+    bool response_speed_changed : 1;
+    bool stability_changed : 1;
+    bool noise_filtering_changed : 1;
+    bool led_behavior_changed : 1;
+    bool led_speed_changed : 1;
+    bool led_polarity_changed : 1;
+    bool multi_touch_changed : 1;
+    bool interrupts_changed : 1;
+    bool power_settings_changed : 1;
+    bool gain_changed : 1;
+    bool delta_sense_changed : 1;
+    bool standby_sensitivity_changed : 1;
+    bool auto_recalibration_changed : 1;
+    bool digital_noise_filter_changed : 1;
+    bool analog_noise_filter_changed : 1;
+    
+    ConfigChangeSet() : sensitivity_changed(false), response_speed_changed(false), 
+                       stability_changed(false), noise_filtering_changed(false),
+                       led_behavior_changed(false), led_speed_changed(false),
+                       led_polarity_changed(false), multi_touch_changed(false),
+                       interrupts_changed(false), power_settings_changed(false),
+                       gain_changed(false), delta_sense_changed(false),
+                       standby_sensitivity_changed(false), auto_recalibration_changed(false),
+                       digital_noise_filter_changed(false), analog_noise_filter_changed(false) {}
+    
+    bool hasChanges() const {
+        return sensitivity_changed || response_speed_changed || stability_changed ||
+               noise_filtering_changed || led_behavior_changed || led_speed_changed ||
+               led_polarity_changed || multi_touch_changed || interrupts_changed ||
+               power_settings_changed || gain_changed || delta_sense_changed ||
+               standby_sensitivity_changed || auto_recalibration_changed ||
+               digital_noise_filter_changed || analog_noise_filter_changed;
+    }
+};
 
 } // namespace CAP1188

@@ -102,20 +102,67 @@ DeviceStatus CAP1188Device::getStatus() {
 Error CAP1188Device::setConfiguration(const DeviceConfig& config) {
     _config = config;
     
-    // Update main control register
-    Error err = _updateMainControl();
+    // Apply human-readable settings by translating to register values
+    
+    // Configure touch sensitivity (if not using legacy gain setting)
+    if (_config.gain == Gain::GAIN_1X) {  // Default gain indicates using new sensitivity
+        uint8_t threshold = _sensitivityToThreshold(_config.sensitivity);
+        // Apply to all channels that don't have custom thresholds
+        for (int i = 0; i < 8; ++i) {
+            if (_channel_configs[i].custom_threshold == 0) {
+                Error err = setChannelThreshold(static_cast<TouchChannel>(i), threshold);
+                if (err != Error::SUCCESS) return err;
+            }
+        }
+    }
+    
+    // Configure response speed
+    uint8_t repeat_rate = _responseSpeedToRepeatRate(_config.response_speed);
+    Error err = writeRegister(REG_REPEAT_RATE, repeat_rate);
     if (err != Error::SUCCESS) return err;
     
-    // Update sensor configuration
+    // Configure touch stability (averaging)
+    uint8_t averaging = _stabilityToAveraging(_config.stability);
+    err = writeRegister(REG_AVERAGING, averaging);
+    if (err != Error::SUCCESS) return err;
+    
+    // Configure noise filtering
+    uint8_t noise_config = _noiseFilteringToConfig(_config.noise_filtering);
+    err = writeRegister(REG_CONFIGURATION, noise_config);
+    if (err != Error::SUCCESS) return err;
+    
+    // Configure multi-touch
+    uint8_t multi_config = _multiTouchToConfig(_config.multi_touch);
+    err = writeRegister(REG_MULTIPLE_TOUCH_CONFIG, multi_config);
+    if (err != Error::SUCCESS) return err;
+    
+    // Configure LED behavior (apply to all channels using global setting)
+    uint8_t pulse1, pulse2, breathe;
+    _ledBehaviorToRegisters(_config.led_behavior, _config.led_speed, pulse1, pulse2, breathe);
+    
+    // Apply LED timing to all channels (individual channel overrides handled in setChannelConfig)
+    for (int i = 0; i < 8; ++i) {
+        if (_channel_configs[i].led_behavior == LEDBehavior::USE_GLOBAL) {
+            err = writeRegister(REG_LED_PULSE_1_PERIOD, pulse1);
+            if (err != Error::SUCCESS) return err;
+            err = writeRegister(REG_LED_PULSE_2_PERIOD, pulse2);
+            if (err != Error::SUCCESS) return err;
+            err = writeRegister(REG_LED_BREATHE_PERIOD, breathe);
+            if (err != Error::SUCCESS) return err;
+            break;  // Only need to write once for global settings
+        }
+    }
+    
+    // Update main control register
+    err = _updateMainControl();
+    if (err != Error::SUCCESS) return err;
+    
+    // Update sensor configuration  
     err = _updateSensorConfig();
     if (err != Error::SUCCESS) return err;
     
     // Configure LED polarity
     err = setLEDPolarity(_config.led_active_high);
-    if (err != Error::SUCCESS) return err;
-    
-    // Configure multiple touch
-    err = enableMultiTouch(_config.multi_touch_enabled);
     if (err != Error::SUCCESS) return err;
     
     // Configure interrupts
@@ -135,6 +182,301 @@ Error CAP1188Device::setConfiguration(const DeviceConfig& config) {
 
 DeviceConfig CAP1188Device::getConfiguration() const {
     return _config;
+}
+
+// Runtime configuration updates (granular)
+Error CAP1188Device::updateSensitivity(TouchSensitivity sensitivity) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    Error err = _updateSensitivityRegisters(sensitivity);
+    if (err == Error::SUCCESS) {
+        _config.sensitivity = sensitivity;
+    }
+    return err;
+}
+
+Error CAP1188Device::updateResponseSpeed(TouchResponseSpeed speed) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    Error err = _updateResponseSpeedRegisters(speed);
+    if (err == Error::SUCCESS) {
+        _config.response_speed = speed;
+    }
+    return err;
+}
+
+Error CAP1188Device::updateStability(TouchStability stability) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    Error err = _updateStabilityRegisters(stability);
+    if (err == Error::SUCCESS) {
+        _config.stability = stability;
+    }
+    return err;
+}
+
+Error CAP1188Device::updateNoiseFiltering(NoiseFiltering filtering) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    Error err = _updateNoiseFilteringRegisters(filtering);
+    if (err == Error::SUCCESS) {
+        _config.noise_filtering = filtering;
+    }
+    return err;
+}
+
+Error CAP1188Device::updateLEDBehavior(LEDBehavior behavior, LEDSpeed speed) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    Error err = _updateLEDBehaviorRegisters(behavior, speed);
+    if (err == Error::SUCCESS) {
+        _config.led_behavior = behavior;
+        _config.led_speed = speed;
+    }
+    return err;
+}
+
+Error CAP1188Device::updateMultiTouchMode(MultiTouchMode mode) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    Error err = _updateMultiTouchRegisters(mode);
+    if (err == Error::SUCCESS) {
+        _config.multi_touch = mode;
+        _config.multi_touch_enabled = (mode != MultiTouchMode::DISABLED);
+    }
+    return err;
+}
+
+// Runtime configuration updates (batch)
+Error CAP1188Device::updateTouchSettings(TouchSensitivity sensitivity, TouchResponseSpeed speed, TouchStability stability) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    // Apply all changes or none
+    Error err = _updateSensitivityRegisters(sensitivity);
+    if (err != Error::SUCCESS) return err;
+    
+    err = _updateResponseSpeedRegisters(speed);
+    if (err != Error::SUCCESS) {
+        // Rollback sensitivity
+        _updateSensitivityRegisters(_config.sensitivity);
+        return err;
+    }
+    
+    err = _updateStabilityRegisters(stability);
+    if (err != Error::SUCCESS) {
+        // Rollback previous changes
+        _updateSensitivityRegisters(_config.sensitivity);
+        _updateResponseSpeedRegisters(_config.response_speed);
+        return err;
+    }
+    
+    // All successful, update config
+    _config.sensitivity = sensitivity;
+    _config.response_speed = speed;
+    _config.stability = stability;
+    
+    return Error::SUCCESS;
+}
+
+Error CAP1188Device::updateLEDSettings(LEDBehavior behavior, LEDSpeed speed, bool active_high) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    // Apply all changes or none
+    Error err = _updateLEDBehaviorRegisters(behavior, speed);
+    if (err != Error::SUCCESS) return err;
+    
+    err = setLEDPolarity(active_high);
+    if (err != Error::SUCCESS) {
+        // Rollback LED behavior
+        _updateLEDBehaviorRegisters(_config.led_behavior, _config.led_speed);
+        return err;
+    }
+    
+    // All successful, update config
+    _config.led_behavior = behavior;
+    _config.led_speed = speed;
+    _config.led_active_high = active_high;
+    
+    return Error::SUCCESS;
+}
+
+Error CAP1188Device::updateNoiseSettings(NoiseFiltering filtering, bool digital_filter, bool analog_filter) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    // Apply all changes or none
+    Error err = _updateNoiseFilteringRegisters(filtering);
+    if (err != Error::SUCCESS) return err;
+    
+    // Update digital and analog noise filter settings
+    bool prev_digital = _config.digital_noise_filter;
+    bool prev_analog = _config.analog_noise_filter;
+    
+    _config.digital_noise_filter = digital_filter;
+    _config.analog_noise_filter = analog_filter;
+    
+    err = _updateSensorConfig();
+    if (err != Error::SUCCESS) {
+        // Rollback all changes
+        _updateNoiseFilteringRegisters(_config.noise_filtering);
+        _config.digital_noise_filter = prev_digital;
+        _config.analog_noise_filter = prev_analog;
+        _updateSensorConfig();
+        return err;
+    }
+    
+    // All successful, update config
+    _config.noise_filtering = filtering;
+    
+    return Error::SUCCESS;
+}
+
+Error CAP1188Device::updatePowerSettings(bool interrupts, bool deep_sleep) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    // Apply interrupt setting
+    Error err = enableInterrupts(interrupts);
+    if (err != Error::SUCCESS) return err;
+    
+    // Handle deep sleep setting
+    if (deep_sleep && !_config.deep_sleep_enabled) {
+        err = enterDeepSleep();
+    } else if (!deep_sleep && _config.deep_sleep_enabled) {
+        err = exitDeepSleep();
+    }
+    
+    if (err != Error::SUCCESS) {
+        // Rollback interrupt setting
+        enableInterrupts(_config.interrupts_enabled);
+        return err;
+    }
+    
+    // All successful, update config
+    _config.interrupts_enabled = interrupts;
+    _config.deep_sleep_enabled = deep_sleep;
+    
+    return Error::SUCCESS;
+}
+
+// Runtime configuration updates (smart merging)
+Error CAP1188Device::updateConfiguration(const DeviceConfig& new_config, bool force_all) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    
+    // Validate the new configuration
+    Error err = _validateDeviceConfig(new_config);
+    if (err != Error::SUCCESS) return err;
+    
+    err = _validateConfigurationChange(_config, new_config);
+    if (err != Error::SUCCESS) return err;
+    
+    if (force_all) {
+        // Apply complete configuration (same as setConfiguration)
+        return setConfiguration(new_config);
+    }
+    
+    // Detect changes and apply only what's different
+    ConfigChangeSet changes = _detectDeviceConfigChanges(_config, new_config);
+    
+    if (!changes.hasChanges()) {
+        return Error::SUCCESS; // No changes needed
+    }
+    
+    return _applyDeviceConfigChanges(new_config, changes);
+}
+
+// Per-channel runtime updates
+Error CAP1188Device::updateChannelSensitivity(TouchChannel channel, TouchSensitivity sensitivity) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    if (!_isValidChannel(channel) || channel == TouchChannel::ALL) {
+        return Error::INVALID_PARAMETER;
+    }
+    
+    uint8_t threshold = _sensitivityToThreshold(sensitivity);
+    Error err = setChannelThreshold(channel, threshold);
+    
+    if (err == Error::SUCCESS) {
+        _channel_configs[static_cast<uint8_t>(channel)].sensitivity = sensitivity;
+        _channel_configs[static_cast<uint8_t>(channel)].custom_threshold = threshold;
+    }
+    
+    return err;
+}
+
+Error CAP1188Device::updateChannelLEDBehavior(TouchChannel channel, LEDBehavior behavior) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    if (!_isValidChannel(channel) || channel == TouchChannel::ALL) {
+        return Error::INVALID_PARAMETER;
+    }
+    
+    // For per-channel LED behavior, we need to configure LED linking
+    // and update the channel's LED behavior setting
+    Error err = Error::SUCCESS;
+    
+    if (behavior == LEDBehavior::OFF) {
+        err = linkLEDToTouch(channel, false);
+    } else {
+        err = linkLEDToTouch(channel, true);
+        // Note: Advanced LED behaviors would require additional register configuration
+        // For now, we support basic on/off linking
+    }
+    
+    if (err == Error::SUCCESS) {
+        _channel_configs[static_cast<uint8_t>(channel)].led_behavior = behavior;
+    }
+    
+    return err;
+}
+
+Error CAP1188Device::updateChannelConfiguration(TouchChannel channel, const TouchConfig& new_config, bool force_all) {
+    if (!_initialized) return Error::NOT_INITIALIZED;
+    if (!_isValidChannel(channel) || channel == TouchChannel::ALL) {
+        return Error::INVALID_PARAMETER;
+    }
+    
+    // Validate the new channel configuration
+    Error err = _validateChannelConfig(channel, new_config);
+    if (err != Error::SUCCESS) return err;
+    
+    if (force_all) {
+        // Apply complete channel configuration
+        return setChannelConfig(channel, new_config);
+    }
+    
+    // Apply only changed settings
+    uint8_t ch_idx = static_cast<uint8_t>(channel);
+    TouchConfig& current = _channel_configs[ch_idx];
+    
+    // Check and update enabled state
+    if (new_config.enabled != current.enabled) {
+        err = enableChannel(channel, new_config.enabled);
+        if (err != Error::SUCCESS) return err;
+    }
+    
+    // Check and update threshold/sensitivity
+    if (new_config.sensitivity != current.sensitivity || 
+        new_config.threshold != current.threshold ||
+        new_config.custom_threshold != current.custom_threshold) {
+        
+        uint8_t threshold = (new_config.custom_threshold > 0) ? 
+                           new_config.custom_threshold : 
+                           (new_config.sensitivity != TouchSensitivity::USE_GLOBAL) ?
+                           _sensitivityToThreshold(new_config.sensitivity) : 
+                           new_config.threshold;
+        
+        err = setChannelThreshold(channel, threshold);
+        if (err != Error::SUCCESS) return err;
+    }
+    
+    // Check and update LED linking
+    if (new_config.linked_led != current.linked_led ||
+        new_config.led_behavior != current.led_behavior) {
+        err = linkLEDToTouch(channel, new_config.linked_led);
+        if (err != Error::SUCCESS) return err;
+    }
+    
+    // Update the stored configuration
+    current = new_config;
+    
+    return Error::SUCCESS;
 }
 
 uint8_t CAP1188Device::getTouchedChannels() {
@@ -495,6 +837,106 @@ const char* CAP1188Device::getErrorString(Error error) const {
     return errorToString(error);
 }
 
+// Configuration translation methods
+
+uint8_t CAP1188Device::_sensitivityToThreshold(TouchSensitivity sensitivity) const {
+    switch (sensitivity) {
+        case TouchSensitivity::VERY_LOW:   return 0x80;  // High threshold = low sensitivity
+        case TouchSensitivity::LOW:        return 0x60;
+        case TouchSensitivity::MEDIUM:     return 0x40;  // Default
+        case TouchSensitivity::HIGH:       return 0x20;
+        case TouchSensitivity::VERY_HIGH:  return 0x10;  // Low threshold = high sensitivity
+        default:                           return 0x40;  // Default to medium
+    }
+}
+
+uint8_t CAP1188Device::_responseSpeedToRepeatRate(TouchResponseSpeed speed) const {
+    switch (speed) {
+        case TouchResponseSpeed::VERY_SLOW: return 0xFF;  // 560ms
+        case TouchResponseSpeed::SLOW:      return 0x80;  // 280ms
+        case TouchResponseSpeed::MEDIUM:    return 0x35;  // 140ms (default)
+        case TouchResponseSpeed::FAST:      return 0x1A;  // 70ms
+        case TouchResponseSpeed::VERY_FAST: return 0x0D;  // 35ms
+        default:                            return 0x35;  // Default to medium
+    }
+}
+
+uint8_t CAP1188Device::_stabilityToAveraging(TouchStability stability) const {
+    switch (stability) {
+        case TouchStability::INSTANT:     return 0x00;  // No averaging
+        case TouchStability::FAST:        return 0x01;  // 2 samples
+        case TouchStability::BALANCED:    return 0x03;  // 4 samples (default)
+        case TouchStability::STABLE:      return 0x07;  // 8 samples
+        case TouchStability::VERY_STABLE: return 0x0F;  // 16 samples
+        default:                          return 0x03;  // Default to balanced
+    }
+}
+
+uint8_t CAP1188Device::_noiseFilteringToConfig(NoiseFiltering filtering) const {
+    switch (filtering) {
+        case NoiseFiltering::DISABLED: return 0x00;  // No filtering
+        case NoiseFiltering::LIGHT:    return 0x01;  // Light filtering
+        case NoiseFiltering::MEDIUM:   return 0x03;  // Standard (default)
+        case NoiseFiltering::HEAVY:    return 0x07;  // Heavy filtering
+        case NoiseFiltering::MAXIMUM:  return 0x0F;  // Maximum filtering
+        default:                       return 0x03;  // Default to medium
+    }
+}
+
+uint8_t CAP1188Device::_multiTouchToConfig(MultiTouchMode mode) const {
+    switch (mode) {
+        case MultiTouchMode::DISABLED:       return 0x80;  // Block multiple touch
+        case MultiTouchMode::ENABLED:        return 0x00;  // Allow all
+        case MultiTouchMode::TWO_FINGER_MAX: return 0x00;  // Allow all (limit handled elsewhere)
+        case MultiTouchMode::GESTURE_MODE:   return 0x00;  // Allow all with gesture detection
+        default:                             return 0x80;  // Default to disabled
+    }
+}
+
+void CAP1188Device::_ledBehaviorToRegisters(LEDBehavior behavior, LEDSpeed speed, 
+                                           uint8_t& pulse1, uint8_t& pulse2, uint8_t& breathe) const {
+    // Base timing values for different speeds
+    uint8_t base_timing;
+    switch (speed) {
+        case LEDSpeed::VERY_SLOW: base_timing = 0xFF; break;  // 2 seconds
+        case LEDSpeed::SLOW:      base_timing = 0x80; break;  // 1 second
+        case LEDSpeed::MEDIUM:    base_timing = 0x40; break;  // 0.5 seconds (default)
+        case LEDSpeed::FAST:      base_timing = 0x20; break;  // 0.25 seconds
+        case LEDSpeed::VERY_FAST: base_timing = 0x10; break;  // 0.125 seconds
+        default:                  base_timing = 0x40; break;  // Default to medium
+    }
+    
+    // Configure timing based on behavior
+    switch (behavior) {
+        case LEDBehavior::OFF:
+        case LEDBehavior::TOUCH_FEEDBACK:
+            pulse1 = 0x00;
+            pulse2 = 0x00;
+            breathe = 0x00;
+            break;
+        case LEDBehavior::PULSE_ON_TOUCH:
+            pulse1 = base_timing;
+            pulse2 = 0x00;
+            breathe = 0x00;
+            break;
+        case LEDBehavior::BREATHE_ON_TOUCH:
+            pulse1 = 0x00;
+            pulse2 = 0x00;
+            breathe = base_timing;
+            break;
+        case LEDBehavior::FADE_ON_RELEASE:
+            pulse1 = base_timing / 2;
+            pulse2 = base_timing;
+            breathe = 0x00;
+            break;
+        default:
+            pulse1 = 0x00;
+            pulse2 = 0x00;
+            breathe = 0x00;
+            break;
+    }
+}
+
 // Private implementation methods
 
 Error CAP1188Device::_verifyDevice() {
@@ -687,6 +1129,204 @@ uint8_t channelToIndex(TouchChannel channel) {
         return static_cast<uint8_t>(channel);
     }
     return 0;
+}
+
+// Runtime configuration update helper methods
+
+Error CAP1188Device::_updateSensitivityRegisters(TouchSensitivity sensitivity) {
+    uint8_t threshold = _sensitivityToThreshold(sensitivity);
+    
+    // Apply to all channels that don't have custom thresholds
+    for (int i = 0; i < 8; ++i) {
+        if (_channel_configs[i].custom_threshold == 0) {
+            Error err = setChannelThreshold(static_cast<TouchChannel>(i), threshold);
+            if (err != Error::SUCCESS) return err;
+        }
+    }
+    
+    return Error::SUCCESS;
+}
+
+Error CAP1188Device::_updateResponseSpeedRegisters(TouchResponseSpeed speed) {
+    uint8_t repeat_rate = _responseSpeedToRepeatRate(speed);
+    return writeRegister(REG_REPEAT_RATE, repeat_rate);
+}
+
+Error CAP1188Device::_updateStabilityRegisters(TouchStability stability) {
+    uint8_t averaging = _stabilityToAveraging(stability);
+    return writeRegister(REG_AVERAGING, averaging);
+}
+
+Error CAP1188Device::_updateNoiseFilteringRegisters(NoiseFiltering filtering) {
+    uint8_t noise_config = _noiseFilteringToConfig(filtering);
+    return writeRegister(REG_CONFIGURATION, noise_config);
+}
+
+Error CAP1188Device::_updateLEDBehaviorRegisters(LEDBehavior behavior, LEDSpeed speed) {
+    uint8_t pulse1, pulse2, breathe;
+    _ledBehaviorToRegisters(behavior, speed, pulse1, pulse2, breathe);
+    
+    // Write LED timing registers
+    Error err = writeRegister(REG_LED_PULSE_1_PERIOD, pulse1);
+    if (err != Error::SUCCESS) return err;
+    
+    err = writeRegister(REG_LED_PULSE_2_PERIOD, pulse2);
+    if (err != Error::SUCCESS) return err;
+    
+    err = writeRegister(REG_LED_BREATHE_PERIOD, breathe);
+    if (err != Error::SUCCESS) return err;
+    
+    return Error::SUCCESS;
+}
+
+Error CAP1188Device::_updateMultiTouchRegisters(MultiTouchMode mode) {
+    uint8_t multi_config = _multiTouchToConfig(mode);
+    return writeRegister(REG_MULTIPLE_TOUCH_CONFIG, multi_config);
+}
+
+// Configuration validation methods
+
+Error CAP1188Device::_validateDeviceConfig(const DeviceConfig& config) const {
+    // Check for valid enum values and logical combinations
+    // reset_pin is uint8_t so valid range is 0-255, with 255 meaning disabled
+    
+    // Add more validation as needed
+    return Error::SUCCESS;
+}
+
+Error CAP1188Device::_validateChannelConfig(TouchChannel channel, const TouchConfig& config) const {
+    if (!_isValidChannel(channel)) {
+        return Error::INVALID_PARAMETER;
+    }
+    
+    if (!_isValidThreshold(config.threshold)) {
+        return Error::INVALID_PARAMETER;
+    }
+    
+    return Error::SUCCESS;
+}
+
+Error CAP1188Device::_validateConfigurationChange(const DeviceConfig& old_config, const DeviceConfig& new_config) const {
+    // Check for potentially disruptive changes
+    if (old_config.reset_pin != new_config.reset_pin) {
+        // Changing reset pin configuration during runtime is not recommended
+        return Error::CONFIGURATION_ERROR;
+    }
+    
+    return Error::SUCCESS;
+}
+
+// Change detection methods
+
+ConfigChangeSet CAP1188Device::_detectDeviceConfigChanges(const DeviceConfig& old_config, const DeviceConfig& new_config) const {
+    ConfigChangeSet changes;
+    
+    changes.sensitivity_changed = (old_config.sensitivity != new_config.sensitivity);
+    changes.response_speed_changed = (old_config.response_speed != new_config.response_speed);
+    changes.stability_changed = (old_config.stability != new_config.stability);
+    changes.noise_filtering_changed = (old_config.noise_filtering != new_config.noise_filtering);
+    changes.led_behavior_changed = (old_config.led_behavior != new_config.led_behavior);
+    changes.led_speed_changed = (old_config.led_speed != new_config.led_speed);
+    changes.led_polarity_changed = (old_config.led_active_high != new_config.led_active_high);
+    changes.multi_touch_changed = (old_config.multi_touch != new_config.multi_touch);
+    changes.interrupts_changed = (old_config.interrupts_enabled != new_config.interrupts_enabled);
+    changes.power_settings_changed = (old_config.deep_sleep_enabled != new_config.deep_sleep_enabled);
+    changes.gain_changed = (old_config.gain != new_config.gain);
+    changes.delta_sense_changed = (old_config.delta_sense != new_config.delta_sense);
+    changes.standby_sensitivity_changed = (old_config.standby_sensitivity != new_config.standby_sensitivity);
+    changes.auto_recalibration_changed = (old_config.auto_recalibration != new_config.auto_recalibration);
+    changes.digital_noise_filter_changed = (old_config.digital_noise_filter != new_config.digital_noise_filter);
+    changes.analog_noise_filter_changed = (old_config.analog_noise_filter != new_config.analog_noise_filter);
+    
+    return changes;
+}
+
+Error CAP1188Device::_applyDeviceConfigChanges(const DeviceConfig& config, const ConfigChangeSet& changes) {
+    Error err = Error::SUCCESS;
+    
+    // Apply changes in logical order to minimize disruption
+    
+    if (changes.sensitivity_changed) {
+        err = _updateSensitivityRegisters(config.sensitivity);
+        if (err != Error::SUCCESS) return err;
+        _config.sensitivity = config.sensitivity;
+    }
+    
+    if (changes.response_speed_changed) {
+        err = _updateResponseSpeedRegisters(config.response_speed);
+        if (err != Error::SUCCESS) return err;
+        _config.response_speed = config.response_speed;
+    }
+    
+    if (changes.stability_changed) {
+        err = _updateStabilityRegisters(config.stability);
+        if (err != Error::SUCCESS) return err;
+        _config.stability = config.stability;
+    }
+    
+    if (changes.noise_filtering_changed || changes.digital_noise_filter_changed || 
+        changes.analog_noise_filter_changed) {
+        _config.noise_filtering = config.noise_filtering;
+        _config.digital_noise_filter = config.digital_noise_filter;
+        _config.analog_noise_filter = config.analog_noise_filter;
+        err = _updateSensorConfig();
+        if (err != Error::SUCCESS) return err;
+    }
+    
+    if (changes.led_behavior_changed || changes.led_speed_changed) {
+        err = _updateLEDBehaviorRegisters(config.led_behavior, config.led_speed);
+        if (err != Error::SUCCESS) return err;
+        _config.led_behavior = config.led_behavior;
+        _config.led_speed = config.led_speed;
+    }
+    
+    if (changes.led_polarity_changed) {
+        err = setLEDPolarity(config.led_active_high);
+        if (err != Error::SUCCESS) return err;
+        _config.led_active_high = config.led_active_high;
+    }
+    
+    if (changes.multi_touch_changed) {
+        err = _updateMultiTouchRegisters(config.multi_touch);
+        if (err != Error::SUCCESS) return err;
+        _config.multi_touch = config.multi_touch;
+        _config.multi_touch_enabled = (config.multi_touch != MultiTouchMode::DISABLED);
+    }
+    
+    if (changes.interrupts_changed) {
+        err = enableInterrupts(config.interrupts_enabled);
+        if (err != Error::SUCCESS) return err;
+        _config.interrupts_enabled = config.interrupts_enabled;
+    }
+    
+    if (changes.power_settings_changed) {
+        if (config.deep_sleep_enabled && !_config.deep_sleep_enabled) {
+            err = enterDeepSleep();
+        } else if (!config.deep_sleep_enabled && _config.deep_sleep_enabled) {
+            err = exitDeepSleep();
+        }
+        if (err != Error::SUCCESS) return err;
+        _config.deep_sleep_enabled = config.deep_sleep_enabled;
+    }
+    
+    if (changes.gain_changed) {
+        err = setGain(config.gain);
+        if (err != Error::SUCCESS) return err;
+        _config.gain = config.gain;
+    }
+    
+    if (changes.standby_sensitivity_changed) {
+        err = writeRegister(REG_STANDBY_SENSITIVITY, config.standby_sensitivity);
+        if (err != Error::SUCCESS) return err;
+        _config.standby_sensitivity = config.standby_sensitivity;
+    }
+    
+    // Update remaining config values that don't require register writes
+    if (changes.auto_recalibration_changed) {
+        _config.auto_recalibration = config.auto_recalibration;
+    }
+    
+    return Error::SUCCESS;
 }
 
 } // namespace CAP1188

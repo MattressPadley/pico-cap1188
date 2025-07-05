@@ -14,7 +14,7 @@ public:
     // Constructor
     explicit CAP1188Device(i2c_inst_t* i2c_instance, 
                           uint8_t device_address = DEFAULT_I2C_ADDRESS,
-                          uint reset_pin = 255); // Invalid pin = no reset
+                          uint reset_pin = 255); // 255 = no reset pin (disabled)
 
     // Destructor
     ~CAP1188Device();
@@ -26,6 +26,28 @@ public:
     DeviceStatus getStatus();
     Error setConfiguration(const DeviceConfig& config);
     DeviceConfig getConfiguration() const;
+    
+    // Runtime configuration updates (granular)
+    Error updateSensitivity(TouchSensitivity sensitivity);
+    Error updateResponseSpeed(TouchResponseSpeed speed);
+    Error updateStability(TouchStability stability);
+    Error updateNoiseFiltering(NoiseFiltering filtering);
+    Error updateLEDBehavior(LEDBehavior behavior, LEDSpeed speed = LEDSpeed::MEDIUM);
+    Error updateMultiTouchMode(MultiTouchMode mode);
+    
+    // Runtime configuration updates (batch)
+    Error updateTouchSettings(TouchSensitivity sensitivity, TouchResponseSpeed speed, TouchStability stability);
+    Error updateLEDSettings(LEDBehavior behavior, LEDSpeed speed, bool active_high);
+    Error updateNoiseSettings(NoiseFiltering filtering, bool digital_filter, bool analog_filter);
+    Error updatePowerSettings(bool interrupts, bool deep_sleep);
+    
+    // Runtime configuration updates (smart merging)
+    Error updateConfiguration(const DeviceConfig& new_config, bool force_all = false);
+    
+    // Per-channel runtime updates
+    Error updateChannelSensitivity(TouchChannel channel, TouchSensitivity sensitivity);
+    Error updateChannelLEDBehavior(TouchChannel channel, LEDBehavior behavior);
+    Error updateChannelConfiguration(TouchChannel channel, const TouchConfig& new_config, bool force_all = false);
 
     // Touch sensing functions
     uint8_t getTouchedChannels();
@@ -139,6 +161,31 @@ private:
     uint8_t _getBaseCountRegister(TouchChannel channel) const;
     Error _updateMainControl();
     Error _updateSensorConfig();
+    
+    // Runtime configuration update helpers
+    Error _updateSensitivityRegisters(TouchSensitivity sensitivity);
+    Error _updateResponseSpeedRegisters(TouchResponseSpeed speed);
+    Error _updateStabilityRegisters(TouchStability stability);
+    Error _updateNoiseFilteringRegisters(NoiseFiltering filtering);
+    Error _updateLEDBehaviorRegisters(LEDBehavior behavior, LEDSpeed speed);
+    Error _updateMultiTouchRegisters(MultiTouchMode mode);
+    
+    // Configuration validation
+    Error _validateDeviceConfig(const DeviceConfig& config) const;
+    Error _validateChannelConfig(TouchChannel channel, const TouchConfig& config) const;
+    Error _validateConfigurationChange(const DeviceConfig& old_config, const DeviceConfig& new_config) const;
+    
+    // Change detection
+    ConfigChangeSet _detectDeviceConfigChanges(const DeviceConfig& old_config, const DeviceConfig& new_config) const;
+    Error _applyDeviceConfigChanges(const DeviceConfig& config, const ConfigChangeSet& changes);
+    
+    // Configuration translation methods (human-readable to register values)
+    uint8_t _sensitivityToThreshold(TouchSensitivity sensitivity) const;
+    uint8_t _responseSpeedToRepeatRate(TouchResponseSpeed speed) const;
+    uint8_t _stabilityToAveraging(TouchStability stability) const;
+    uint8_t _noiseFilteringToConfig(NoiseFiltering filtering) const;
+    uint8_t _multiTouchToConfig(MultiTouchMode mode) const;
+    void _ledBehaviorToRegisters(LEDBehavior behavior, LEDSpeed speed, uint8_t& pulse1, uint8_t& pulse2, uint8_t& breathe) const;
     
     // State management
     void _updateTouchState();
