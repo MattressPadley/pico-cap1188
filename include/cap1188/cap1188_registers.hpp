@@ -23,7 +23,7 @@ constexpr uint8_t REG_REVISION = 0xFF;
 // Expected device identification values
 constexpr uint8_t EXPECTED_PRODUCT_ID = 0x50;
 constexpr uint8_t EXPECTED_MANUFACTURER_ID = 0x5D;
-constexpr uint8_t EXPECTED_REVISION = 0x83;
+constexpr uint8_t EXPECTED_REVISION = 0x82;
 
 // Core control registers
 constexpr uint8_t REG_MAIN_CONTROL = 0x00;

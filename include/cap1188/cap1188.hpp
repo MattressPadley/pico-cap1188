@@ -16,7 +16,7 @@ public:
                           uint8_t device_address = DEFAULT_I2C_ADDRESS,
                           uint sda_pin = PICO_DEFAULT_I2C_SDA_PIN,
                           uint scl_pin = PICO_DEFAULT_I2C_SCL_PIN,
-                          uint reset_pin = PICO_DEFAULT_GPIO_PIN_COUNT); // Invalid pin = no reset
+                          uint reset_pin = 255); // Invalid pin = no reset
 
     // Destructor
     ~CAP1188Device();

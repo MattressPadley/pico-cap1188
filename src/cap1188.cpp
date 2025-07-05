@@ -40,7 +40,7 @@ Error CAP1188Device::begin(uint baudrate) {
     }
     
     // Hardware reset if pin is connected
-    if (_reset_pin < PICO_DEFAULT_GPIO_PIN_COUNT) {
+    if (_reset_pin < 255) {
         err = _hardwareReset();
         if (err != Error::SUCCESS) {
             return err;
@@ -69,7 +69,7 @@ Error CAP1188Device::begin(uint baudrate) {
 }
 
 Error CAP1188Device::reset() {
-    if (_reset_pin < PICO_DEFAULT_GPIO_PIN_COUNT) {
+    if (_reset_pin < 255) {
         return _hardwareReset();
     } else {
         return _softwareReset();
@@ -153,7 +153,7 @@ bool CAP1188Device::isChannelTouched(TouchChannel channel) {
     if (!_isValidChannel(channel)) return false;
     
     uint8_t status = getTouchedChannels();
-    return isChannelTouched(status, channel);
+    return CAP1188::isChannelTouched(status, channel);
 }
 
 Error CAP1188Device::enableChannel(TouchChannel channel, bool enable) {
@@ -544,7 +544,7 @@ Error CAP1188Device::_initializeI2C() {
 }
 
 Error CAP1188Device::_hardwareReset() {
-    if (_reset_pin >= PICO_DEFAULT_GPIO_PIN_COUNT) {
+    if (_reset_pin >= 255) {
         return Error::INVALID_PARAMETER;
     }
     
