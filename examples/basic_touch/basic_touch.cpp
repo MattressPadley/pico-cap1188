@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "hardware/i2c.h"
 #include "cap1188/cap1188.hpp"
 
 using namespace CAP1188;
@@ -19,6 +20,36 @@ CAP1188Device touch_sensor(i2c_default, CAP1188_ADDRESS, SDA_PIN, SCL_PIN, RESET
 
 // Track previous touch state to detect changes
 uint8_t previous_touched = 0x00;
+
+// I2C scan function
+void i2c_scan() {
+    printf("\nScanning I2C bus for devices...\n");
+    printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
+    
+    for (int addr = 0; addr < (1 << 7); ++addr) {
+        if (addr % 16 == 0) {
+            printf("%02x ", addr);
+        }
+        
+        // Skip reserved addresses
+        if ((addr & 0x78) == 0 || (addr & 0x78) == 0x78) {
+            printf("   ");
+        } else {
+            uint8_t rxdata;
+            int ret = i2c_read_blocking(i2c_default, addr, &rxdata, 1, false);
+            if (ret >= 0) {
+                printf("%02x ", addr);
+            } else {
+                printf("-- ");
+            }
+        }
+        
+        if (addr % 16 == 15) {
+            printf("\n");
+        }
+    }
+    printf("I2C scan complete.\n\n");
+}
 
 // Touch event callback function
 void on_touch_event(const TouchEvent& event) {
@@ -61,7 +92,7 @@ Error configure_device() {
     // Create device configuration
     DeviceConfig config;
     config.multi_touch_enabled = true;        // Allow multiple simultaneous touches
-    config.interrupts_enabled = true;         // Enable interrupt generation
+    config.interrupts_enabled = false;        // Disable interrupts (not using INT pin)
     config.digital_noise_filter = true;       // Enable noise filtering
     config.analog_noise_filter = true;
     config.led_active_high = false;           // CAP1188 LEDs are typically active low
@@ -148,6 +179,9 @@ void touch_loop() {
         // Read current touch state
         uint8_t current_touched = touch_sensor.getTouchedChannels();
         
+        // Clear interrupt flag for proper release detection
+        touch_sensor.clearInterrupt();
+        
         // Check for changes in touch state
         if (current_touched != previous_touched) {
             // Determine which channels changed
@@ -159,7 +193,7 @@ void touch_loop() {
                     bool pressed = (current_touched & (1 << i)) != 0;
                     
                     // Create and send touch event
-                    TouchEvent event(channel, pressed, get_absolute_time()._private_us_since_boot);
+                    TouchEvent event(channel, pressed, to_us_since_boot(get_absolute_time()));
                     on_touch_event(event);
                 }
             }
@@ -194,11 +228,73 @@ int main() {
     // Initialize stdio for console output
     stdio_init_all();
     
+    // Wait for USB serial connection
+    printf("Waiting for USB serial connection...\n");
+    while (!stdio_usb_connected()) {
+        sleep_ms(100);
+    }
+    
     // Wait a moment for console to initialize
-    sleep_ms(2000);
+    sleep_ms(1000);
     
     printf("CAP1188 Basic Touch Example\n");
     printf("===========================\n");
+    
+    // Initialize I2C before scanning
+    i2c_init(i2c_default, BAUDRATE);
+    gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(SDA_PIN);
+    gpio_pull_up(SCL_PIN);
+    
+    // Perform I2C scan
+    i2c_scan();
+    
+    // Debug: Read device identity registers directly
+    printf("Reading device identity registers...\n");
+    uint8_t product_id, manufacturer_id, revision;
+    uint8_t reg_data;
+    
+    // Read Product ID (register 0xFD)
+    int ret = i2c_write_blocking(i2c_default, CAP1188_ADDRESS, (uint8_t[]){0xFD}, 1, true);
+    if (ret >= 0) {
+        ret = i2c_read_blocking(i2c_default, CAP1188_ADDRESS, &product_id, 1, false);
+        if (ret >= 0) {
+            printf("Product ID: 0x%02X (expected: 0x50)\n", product_id);
+        } else {
+            printf("Failed to read Product ID\n");
+        }
+    } else {
+        printf("Failed to write Product ID register address\n");
+    }
+    
+    // Read Manufacturer ID (register 0xFE)
+    ret = i2c_write_blocking(i2c_default, CAP1188_ADDRESS, (uint8_t[]){0xFE}, 1, true);
+    if (ret >= 0) {
+        ret = i2c_read_blocking(i2c_default, CAP1188_ADDRESS, &manufacturer_id, 1, false);
+        if (ret >= 0) {
+            printf("Manufacturer ID: 0x%02X (expected: 0x5D)\n", manufacturer_id);
+        } else {
+            printf("Failed to read Manufacturer ID\n");
+        }
+    } else {
+        printf("Failed to write Manufacturer ID register address\n");
+    }
+    
+    // Read Revision (register 0xFF)
+    ret = i2c_write_blocking(i2c_default, CAP1188_ADDRESS, (uint8_t[]){0xFF}, 1, true);
+    if (ret >= 0) {
+        ret = i2c_read_blocking(i2c_default, CAP1188_ADDRESS, &revision, 1, false);
+        if (ret >= 0) {
+            printf("Revision: 0x%02X (expected: 0x83)\n", revision);
+        } else {
+            printf("Failed to read Revision\n");
+        }
+    } else {
+        printf("Failed to write Revision register address\n");
+    }
+    
+    printf("\n");
     
     // Initialize external LEDs (optional)
     init_external_leds();
