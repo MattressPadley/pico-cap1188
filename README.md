@@ -74,11 +74,33 @@ int main() {
 
 ### Prerequisites
 
-- Raspberry Pi Pico SDK installed and configured
 - CMake 3.13 or later
 - GCC ARM toolchain
+- Raspberry Pi Pico SDK (automatically downloaded if not present)
 
 ### Build Steps
+
+#### Using Just (Recommended)
+
+```bash
+# Install just if not already installed
+# macOS: brew install just
+# Linux: cargo install just
+
+# Build the library and examples
+just build
+
+# Development build with debug info
+just dev-build
+
+# Release build (optimized)
+just release-build
+
+# Test build: build, flash, and monitor
+just test-build
+```
+
+#### Using CMake Directly
 
 ```bash
 mkdir build
@@ -87,15 +109,39 @@ cmake ..
 make
 ```
 
+The build system will automatically:
+- Download Pico SDK if `PICO_SDK_PATH` is not set
+- Configure cross-platform build settings
+- Build the library and examples
+
 This will build:
 - `libcap1188.a` - The main library
 - `basic_touch.uf2` - Example application
 
 ### Flash to Pico
 
+#### Using picotool (Recommended)
+
+```bash
+# Put Pico in BOOTSEL mode
+picotool load build/basic_touch.uf2 --force
+```
+
+#### Manual Method
+
 1. Hold the BOOTSEL button while connecting the Pico
 2. Copy the `.uf2` file to the Pico drive
 3. The Pico will automatically reboot and run the program
+
+### Monitoring Serial Output
+
+```bash
+# Monitor serial output
+just monitor
+
+# Or use picocom directly
+picocom -b 115200 --imap lfcrlf /dev/cu.usbmodem*
+```
 
 ## Library Structure
 
@@ -128,7 +174,7 @@ docs/
 CAP1188Device(i2c_inst_t* i2c, uint8_t address = DEFAULT_I2C_ADDRESS,
               uint sda_pin = PICO_DEFAULT_I2C_SDA_PIN,
               uint scl_pin = PICO_DEFAULT_I2C_SCL_PIN,
-              uint reset_pin = INVALID_PIN);
+              uint reset_pin = 255);  // 255 = no reset pin
 
 // Initialize device
 Error begin(uint baudrate = 100000);
@@ -255,7 +301,22 @@ void printConfiguration();
 // Get device IDs
 uint8_t getProductID();      // Should return 0x50
 uint8_t getManufacturerID(); // Should return 0x5D
-uint8_t getRevision();       // Should return 0x83
+uint8_t getRevision();       // Should return 0x82
+```
+
+#### I2C Debugging
+
+The basic_touch example includes comprehensive I2C debugging:
+
+```cpp
+// Built-in I2C scanner
+i2c_scan();  // Scans for devices on I2C bus
+
+// Device identification verification
+// Automatically reads and verifies:
+// - Product ID (0x50)
+// - Manufacturer ID (0x5D)  
+// - Revision (0x82)
 ```
 
 ## Advanced Features
