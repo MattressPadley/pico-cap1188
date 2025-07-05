@@ -7,6 +7,7 @@ A comprehensive C++ library for the CAP1188 8-channel capacitive touch sensor, d
 - **Complete CAP1188 Support**: Full abstraction of all chip functionality
 - **8-Channel Touch Sensing**: Individual channel configuration and monitoring
 - **Integrated LED Control**: 8 LED drivers with advanced effects support
+- **Pre-Initialized I2C Pattern**: Proper multi-device I2C support
 - **I2C Communication**: Configurable I2C addresses (0x28-0x2D)
 - **Power Management**: Active, standby, and deep sleep modes
 - **Interrupt Support**: Hardware interrupt handling for efficient operation
@@ -43,13 +44,25 @@ GPIO 22     RESET          Hardware reset (optional)
 
 using namespace CAP1188;
 
-// Create device instance
+// Configuration
+constexpr uint SDA_PIN = PICO_DEFAULT_I2C_SDA_PIN;  // GPIO 4
+constexpr uint SCL_PIN = PICO_DEFAULT_I2C_SCL_PIN;  // GPIO 5
+constexpr uint BAUDRATE = 100000;                   // 100 kHz
+
+// Create device instance (no pin parameters)
 CAP1188Device touch_sensor(i2c_default, DEFAULT_I2C_ADDRESS);
 
 int main() {
     stdio_init_all();
     
-    // Initialize the device
+    // Initialize I2C hardware (Pre-Initialized I2C Pattern)
+    i2c_init(i2c_default, BAUDRATE);
+    gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(SDA_PIN);
+    gpio_pull_up(SCL_PIN);
+    
+    // Initialize the device (no baudrate parameter)
     if (touch_sensor.begin() != Error::SUCCESS) {
         printf("Failed to initialize CAP1188\\n");
         return -1;
@@ -169,15 +182,22 @@ docs/
 
 ### Device Initialization
 
+**Pre-Initialized I2C Pattern** - Applications control I2C hardware setup:
+
 ```cpp
-// Constructor
+// Constructor (simplified - no pin parameters)
 CAP1188Device(i2c_inst_t* i2c, uint8_t address = DEFAULT_I2C_ADDRESS,
-              uint sda_pin = PICO_DEFAULT_I2C_SDA_PIN,
-              uint scl_pin = PICO_DEFAULT_I2C_SCL_PIN,
               uint reset_pin = 255);  // 255 = no reset pin
 
-// Initialize device
-Error begin(uint baudrate = 100000);
+// Initialize I2C hardware first (application responsibility)
+i2c_init(i2c_default, BAUDRATE);
+gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
+gpio_set_function(SCL_PIN, GPIO_FUNC_I2C);
+gpio_pull_up(SDA_PIN);
+gpio_pull_up(SCL_PIN);
+
+// Initialize device (no baudrate parameter)
+Error begin();
 
 // Check connection
 bool isConnected();
@@ -238,6 +258,40 @@ Error setChannelConfig(TouchChannel channel, const TouchConfig& config);
 
 // Multiple touch support
 Error enableMultiTouch(bool enable = true);
+```
+
+## Design Pattern: Pre-Initialized I2C
+
+This library implements the **Pre-Initialized I2C Pattern** for proper multi-device support:
+
+### Benefits
+
+✅ **True Multi-Device Support** - Multiple CAP1188 devices can share the same I2C bus
+✅ **Predictable Behavior** - Applications control exactly when and how I2C is configured
+✅ **Cleaner Architecture** - Clear separation between hardware and device management
+✅ **Better Testability** - Libraries are more focused and easier to test
+
+### Multi-Device Usage
+
+```cpp
+// App initializes I2C once for all devices
+i2c_init(i2c_default, BAUDRATE);
+gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
+gpio_set_function(SCL_PIN, GPIO_FUNC_I2C);
+gpio_pull_up(SDA_PIN);
+gpio_pull_up(SCL_PIN);
+
+// Create multiple devices (no pin conflicts)
+CAP1188Device touch1(i2c_default, 0x29);
+CAP1188Device touch2(i2c_default, 0x2A);
+CAP1188Device touch3(i2c_default, 0x2B);
+
+// Initialize all devices
+touch1.begin();
+touch2.begin();
+touch3.begin();
+
+// All devices now share the same properly configured I2C bus
 ```
 
 ## Examples

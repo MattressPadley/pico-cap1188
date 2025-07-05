@@ -14,15 +14,13 @@ public:
     // Constructor
     explicit CAP1188Device(i2c_inst_t* i2c_instance, 
                           uint8_t device_address = DEFAULT_I2C_ADDRESS,
-                          uint sda_pin = PICO_DEFAULT_I2C_SDA_PIN,
-                          uint scl_pin = PICO_DEFAULT_I2C_SCL_PIN,
                           uint reset_pin = 255); // Invalid pin = no reset
 
     // Destructor
     ~CAP1188Device();
 
     // Device initialization and management
-    Error begin(uint baudrate = 100000);
+    Error begin();
     Error reset();
     bool isConnected();
     DeviceStatus getStatus();
@@ -108,10 +106,7 @@ private:
     // Hardware interface
     i2c_inst_t* _i2c;
     uint8_t _address;
-    uint _sda_pin;
-    uint _scl_pin;
     uint _reset_pin;
-    uint _baudrate;
     
     // State tracking
     bool _initialized;
@@ -130,7 +125,6 @@ private:
     // Internal helper functions
     Error _verifyDevice();
     Error _configureDefaults();
-    Error _initializeI2C();
     Error _hardwareReset();
     Error _softwareReset();
     

@@ -16,7 +16,7 @@ constexpr uint BAUDRATE = 100000;                         // 100 kHz I2C
 constexpr uint LED_PINS[8] = {10, 11, 12, 13, 14, 15, 16, 17};
 
 // Global CAP1188 device instance
-CAP1188Device touch_sensor(i2c_default, CAP1188_ADDRESS, SDA_PIN, SCL_PIN, RESET_PIN);
+CAP1188Device touch_sensor(i2c_default, CAP1188_ADDRESS, RESET_PIN);
 
 // Track previous touch state to detect changes
 uint8_t previous_touched = 0x00;
@@ -239,15 +239,20 @@ int main() {
     
     printf("CAP1188 Basic Touch Example\n");
     printf("===========================\n");
+    printf("This example demonstrates the Pre-Initialized I2C Pattern:\n");
+    printf("- Application handles I2C hardware initialization\n");
+    printf("- Device library only handles device communication\n");
+    printf("- Enables proper multi-device I2C support\n\n");
     
-    // Initialize I2C before scanning
+    // Initialize I2C hardware (pre-initialized pattern)
+    printf("Initializing I2C hardware...\n");
     i2c_init(i2c_default, BAUDRATE);
     gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(SCL_PIN, GPIO_FUNC_I2C);
     gpio_pull_up(SDA_PIN);
     gpio_pull_up(SCL_PIN);
     
-    // Perform I2C scan
+    // Perform I2C scan to verify devices
     i2c_scan();
     
     // Debug: Read device identity registers directly
@@ -302,9 +307,9 @@ int main() {
     // Set up error callback
     touch_sensor.setErrorCallback(on_error);
     
-    // Initialize the CAP1188 device
+    // Initialize the CAP1188 device (no baudrate parameter)
     printf("Initializing CAP1188...\n");
-    Error err = touch_sensor.begin(BAUDRATE);
+    Error err = touch_sensor.begin();
     if (err != Error::SUCCESS) {
         printf("Failed to initialize CAP1188: %s\n", errorToString(err));
         printf("Check I2C connections and device address.\n");

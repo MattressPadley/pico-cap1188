@@ -5,13 +5,10 @@
 namespace CAP1188 {
 
 CAP1188Device::CAP1188Device(i2c_inst_t* i2c_instance, uint8_t device_address,
-                           uint sda_pin, uint scl_pin, uint reset_pin)
+                           uint reset_pin)
     : _i2c(i2c_instance)
     , _address(device_address)
-    , _sda_pin(sda_pin)
-    , _scl_pin(scl_pin)
     , _reset_pin(reset_pin)
-    , _baudrate(100000)
     , _initialized(false)
     , _power_mode(PowerMode::ACTIVE)
     , _touch_callback(nullptr)
@@ -30,18 +27,15 @@ CAP1188Device::~CAP1188Device() {
     }
 }
 
-Error CAP1188Device::begin(uint baudrate) {
-    _baudrate = baudrate;
-    
-    // Initialize I2C
-    Error err = _initializeI2C();
-    if (err != Error::SUCCESS) {
-        return err;
+Error CAP1188Device::begin() {
+    // Validate I2C is ready
+    if (_i2c == nullptr) {
+        return Error::INVALID_PARAMETER;
     }
     
     // Hardware reset if pin is connected
     if (_reset_pin < 255) {
-        err = _hardwareReset();
+        Error err = _hardwareReset();
         if (err != Error::SUCCESS) {
             return err;
         }
@@ -51,7 +45,7 @@ Error CAP1188Device::begin(uint baudrate) {
     sleep_ms(POWER_ON_DELAY_MS);
     
     // Verify device identity
-    err = _verifyDevice();
+    Error err = _verifyDevice();
     if (err != Error::SUCCESS) {
         return err;
     }
@@ -530,18 +524,6 @@ Error CAP1188Device::_configureDefaults() {
     return setConfiguration(default_config);
 }
 
-Error CAP1188Device::_initializeI2C() {
-    // Initialize I2C hardware
-    i2c_init(_i2c, _baudrate);
-    
-    // Set up GPIO pins for I2C
-    gpio_set_function(_sda_pin, GPIO_FUNC_I2C);
-    gpio_set_function(_scl_pin, GPIO_FUNC_I2C);
-    gpio_pull_up(_sda_pin);
-    gpio_pull_up(_scl_pin);
-    
-    return Error::SUCCESS;
-}
 
 Error CAP1188Device::_hardwareReset() {
     if (_reset_pin >= 255) {
