@@ -68,3 +68,4 @@ __pycache__/
 docs/_build/
 docs/html/
 docs/latex/
+.cache/
