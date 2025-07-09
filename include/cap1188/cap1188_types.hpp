@@ -139,15 +139,15 @@ struct TouchConfig {
     
     // Advanced per-channel settings
     bool repeat_enabled = false;        // Auto-repeat when held
-    uint8_t custom_threshold = 0;       // 0 = use calculated from sensitivity
-    uint8_t noise_threshold = 0x25;     // Noise detection threshold
+    uint8_t custom_threshold = 0;       // 0-255: Custom threshold value (0 = use calculated from sensitivity)
+    uint8_t noise_threshold = 37;       // 0-255: Noise detection threshold (default 37)
     
     // Legacy settings (for backward compatibility)
-    uint8_t threshold = 0x40;          // Direct threshold control (overrides sensitivity if custom_threshold == 0)
+    uint8_t threshold = 64;            // 0-255: Direct threshold control (overrides sensitivity if custom_threshold == 0)
     bool linked_led = true;            // LED linked to touch detection
     
     TouchConfig() = default;
-    TouchConfig(uint8_t thresh, bool en = true, bool led = true, uint8_t noise = 0x25)
+    TouchConfig(uint8_t thresh, bool en = true, bool led = true, uint8_t noise = 37)
         : enabled(en), noise_threshold(noise), threshold(thresh), linked_led(led) {}
 };
 
@@ -185,7 +185,7 @@ struct DeviceConfig {
     bool timeout_enabled = false;          // Enable communication timeout
     Gain gain = Gain::GAIN_1X;             // Direct gain control (overrides sensitivity if set)
     DeltaSense delta_sense = DeltaSense::SENSE_32X; // Direct delta sense control
-    uint8_t standby_sensitivity = 0x2F;    // Standby mode sensitivity
+    uint8_t standby_sensitivity = 47;      // 0-255: Standby mode sensitivity (default 47)
     
     DeviceConfig() = default;
 };
@@ -205,12 +205,12 @@ struct TouchEvent {
 // LED configuration for advanced effects
 struct LEDConfig {
     LEDState state = LEDState::OFF;
-    uint8_t pulse1_period = 0x84;      // Pulse 1 period
-    uint8_t pulse2_period = 0x85;      // Pulse 2 period  
-    uint8_t breathe_period = 0x86;     // Breathe period
-    uint8_t duty_cycle = 0x50;         // Duty cycle (0-255)
-    uint8_t ramp_rate = 0x00;          // Ramp rate for transitions
-    uint8_t off_delay = 0x00;          // Delay before turning off
+    uint16_t pulse1_period_ms = 1000;  // Pulse 1 period in milliseconds (32-2048ms)
+    uint16_t pulse2_period_ms = 1500;  // Pulse 2 period in milliseconds (32-2048ms)
+    uint16_t breathe_period_ms = 2000; // Breathe period in milliseconds (32-2048ms)
+    uint8_t duty_cycle_percent = 50;   // Duty cycle as percentage (0-100%)
+    uint8_t ramp_rate = 0;             // Ramp rate for transitions (0-255)
+    uint16_t off_delay_ms = 0;         // Delay before turning off in milliseconds
     
     LEDConfig() = default;
     LEDConfig(LEDState st) : state(st) {}
@@ -261,6 +261,32 @@ constexpr uint8_t calculateThreshold(uint8_t base_count, uint8_t sensitivity_per
     if (threshold < 1) threshold = 1;
     if (threshold > 255) threshold = 255;
     return static_cast<uint8_t>(threshold);
+}
+
+// LED timing conversion helpers
+constexpr uint8_t millisecondsToLEDPeriod(uint16_t ms) {
+    // Convert milliseconds to LED period register value
+    // Period = (register_value + 1) * 32ms
+    // Clamp to valid range (32-2048ms)
+    if (ms < 32) ms = 32;
+    if (ms > 2048) ms = 2048;
+    return static_cast<uint8_t>((ms / 32) - 1);
+}
+
+constexpr uint16_t ledPeriodToMilliseconds(uint8_t period_reg) {
+    // Convert LED period register value to milliseconds
+    return static_cast<uint16_t>((period_reg + 1) * 32);
+}
+
+constexpr uint8_t percentToDutyCycle(uint8_t percent) {
+    // Convert percentage (0-100) to duty cycle register value (0-255)
+    if (percent > 100) percent = 100;
+    return static_cast<uint8_t>((static_cast<uint16_t>(percent) * 255) / 100);
+}
+
+constexpr uint8_t dutyCycleToPercent(uint8_t duty_cycle) {
+    // Convert duty cycle register value (0-255) to percentage (0-100)
+    return static_cast<uint8_t>((static_cast<uint16_t>(duty_cycle) * 100) / 255);
 }
 
 // Configuration change detection structure

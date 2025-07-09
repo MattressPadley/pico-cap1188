@@ -35,6 +35,13 @@ Choose your update granularity:
 - Related setting groups (`updateTouchSettings()`)
 - Complete configuration merging (`updateConfiguration()`)
 
+### 🔢 **Human-Readable Values**
+The library uses intuitive decimal values instead of hex register values:
+- **Thresholds**: 0-255 decimal (not 0x00-0xFF hex)
+- **LED Timing**: Milliseconds (not register values)
+- **LED Brightness**: Percentage 0-100% (not 0-255 register values)
+- **Delays**: Milliseconds (not register cycles)
+
 ## API Reference
 
 ### Granular Updates
@@ -119,6 +126,31 @@ Error updateChannelConfiguration(TouchChannel channel,
                                 const TouchConfig& new_config, 
                                 bool force_all = false);
 ```
+
+### Advanced LED Configuration
+
+Configure LED timing and brightness using human-readable values:
+
+```cpp
+// LED configuration with decimal values
+LEDConfig led_config;
+led_config.state = LEDState::BREATHE;
+led_config.pulse1_period_ms = 1000;    // 1 second pulse period
+led_config.pulse2_period_ms = 1500;    // 1.5 second pulse period
+led_config.breathe_period_ms = 2000;   // 2 second breathe cycle
+led_config.duty_cycle_percent = 75;    // 75% brightness
+led_config.ramp_rate = 128;            // Medium transition speed (0-255)
+led_config.off_delay_ms = 500;         // 500ms delay before turning off
+
+// Apply LED configuration
+Error setLEDConfiguration(TouchChannel channel, const LEDConfig& config);
+```
+
+**LED Timing Ranges:**
+- **Pulse/Breathe Periods**: 32-2048 milliseconds
+- **Duty Cycle**: 0-100% (converted to 0-255 register values)
+- **Ramp Rate**: 0-255 (transition speed)
+- **Off Delay**: 0-65535 milliseconds
 
 ## Usage Patterns
 

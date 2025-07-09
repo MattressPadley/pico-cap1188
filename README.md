@@ -407,10 +407,23 @@ config.led_active_high = false;        // LED polarity
 
 ```cpp
 TouchConfig channel_config;
-channel_config.threshold = 0x40;       // Touch sensitivity
+channel_config.threshold = 64;         // Touch sensitivity (0-255)
 channel_config.enabled = true;         // Channel enable
 channel_config.linked_led = true;      // LED linking
-channel_config.noise_threshold = 0x25; // Noise threshold
+channel_config.noise_threshold = 37;   // Noise threshold (0-255)
+```
+
+### Advanced LED Configuration
+
+```cpp
+LEDConfig led_config;
+led_config.state = LEDState::BREATHE;
+led_config.pulse1_period_ms = 1000;    // Pulse period in milliseconds (32-2048ms)
+led_config.pulse2_period_ms = 1500;    // Pulse period in milliseconds (32-2048ms)
+led_config.breathe_period_ms = 2000;   // Breathe period in milliseconds (32-2048ms)
+led_config.duty_cycle_percent = 75;    // Brightness as percentage (0-100%)
+led_config.ramp_rate = 128;            // Transition speed (0-255)
+led_config.off_delay_ms = 500;         // Delay before turning off (milliseconds)
 ```
 
 ## Troubleshooting

@@ -203,7 +203,7 @@ namespace CAP1188_Types {
     };
     
     struct TouchConfig {
-        uint8_t threshold = 0x40;
+        uint8_t threshold = 64;         // Touch sensitivity (0-255)
         bool enabled = true;
         bool linked_led = true;
     };
