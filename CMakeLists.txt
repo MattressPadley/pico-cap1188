@@ -138,9 +138,11 @@ target_compile_definitions(cap1188 PRIVATE
     CAP1188_VERSION_PATCH=1
 )
 
-# Add version information to the example
-target_compile_definitions(basic_touch PRIVATE
-    CAP1188_VERSION_MAJOR=0
-    CAP1188_VERSION_MINOR=0
-    CAP1188_VERSION_PATCH=1
-)
+# Add version information to the example (only when built standalone)
+if(NOT HAS_PARENT)
+    target_compile_definitions(basic_touch PRIVATE
+        CAP1188_VERSION_MAJOR=0
+        CAP1188_VERSION_MINOR=0
+        CAP1188_VERSION_PATCH=1
+    )
+endif()
