@@ -25,6 +25,10 @@ clean:
     @rm -rf build/
     @echo "Clean complete!"
 
+# Clean everything (build and docs)
+clean-all: clean clean-docs
+    @echo "Complete cleanup finished!"
+
 # Build and flash the basic touch example
 flash: build
     @echo "Flashing basic_touch example to Pico..."
@@ -75,3 +79,38 @@ test-build: build
     @echo "Starting serial monitor..."
     @echo "Press Ctrl+A then Ctrl+X to exit monitoring"
     @picocom -b 115200 --imap lfcrlf /dev/cu.usbmodem*
+
+# Generate documentation
+docs:
+    @echo "Generating API documentation..."
+    @if ! command -v doxygen >/dev/null 2>&1; then \
+        echo "Error: Doxygen not found. Please install doxygen to generate documentation."; \
+        echo "macOS: brew install doxygen"; \
+        echo "Ubuntu/Debian: sudo apt-get install doxygen"; \
+        echo "Other: See https://www.doxygen.nl/download.html"; \
+        exit 1; \
+    fi
+    @mkdir -p docs/generated
+    @doxygen Doxyfile
+    @echo "Documentation generated in docs/generated/html/"
+    @echo "Open docs/generated/html/index.html in your browser to view"
+
+# Build documentation with cmake
+docs-cmake: build
+    @echo "Building documentation with CMake..."
+    @cd build && make docs
+    @echo "Documentation generated in build/docs/generated/html/"
+
+# Open documentation in browser (macOS)
+open-docs: docs
+    @if [ -f "docs/generated/html/index.html" ]; then \
+        open docs/generated/html/index.html; \
+    else \
+        echo "Documentation not found. Run 'just docs' first."; \
+    fi
+
+# Clean documentation
+clean-docs:
+    @echo "Cleaning documentation..."
+    @rm -rf docs/generated
+    @echo "Documentation cleaned!"

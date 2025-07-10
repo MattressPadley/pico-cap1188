@@ -1,9 +1,37 @@
+/**
+ * @file cap1188.cpp
+ * @brief Implementation of the CAP1188 capacitive touch sensor library
+ *
+ * This file contains the complete implementation of the CAP1188Device class
+ * and all supporting functions. It provides comprehensive support for the
+ * CAP1188 8-channel capacitive touch sensor including initialization,
+ * touch detection, LED control, power management, and runtime configuration.
+ *
+ * @author CAP1188 Library Contributors
+ * @date 2024
+ * @version 0.0.1
+ *
+ * @note This implementation follows the Pre-Initialized I2C Pattern and
+ *       requires the application to initialize I2C hardware before use.
+ */
+
 #include "cap1188/cap1188.hpp"
 #include <cstring>
 #include <stdio.h>
 
 namespace CAP1188 {
 
+/**
+ * @brief Constructor for CAP1188Device
+ * 
+ * Initializes the device instance with the specified I2C interface and
+ * device address. The device is not yet initialized - call begin() to
+ * complete initialization.
+ * 
+ * @param i2c_instance Pointer to initialized I2C instance
+ * @param device_address I2C address of the device
+ * @param reset_pin GPIO pin for hardware reset (255 = no reset)
+ */
 CAP1188Device::CAP1188Device(i2c_inst_t* i2c_instance, uint8_t device_address,
                            uint reset_pin)
     : _i2c(i2c_instance)
@@ -21,12 +49,31 @@ CAP1188Device::CAP1188Device(i2c_inst_t* i2c_instance, uint8_t device_address,
     }
 }
 
+/**
+ * @brief Destructor for CAP1188Device
+ * 
+ * Cleans up the device instance. If the device was initialized,
+ * it will be put into deep sleep mode to minimize power consumption.
+ */
 CAP1188Device::~CAP1188Device() {
     if (_initialized) {
         enterDeepSleep();
     }
 }
 
+/**
+ * @brief Initialize the CAP1188 device
+ * 
+ * Performs complete device initialization including hardware reset
+ * (if reset pin is connected), device verification, and default
+ * configuration setup.
+ * 
+ * @return Error::SUCCESS on successful initialization
+ * @return Error::INVALID_PARAMETER if I2C instance is null
+ * @return Error::DEVICE_NOT_FOUND if device verification fails
+ * @return Error::I2C_ERROR if I2C communication fails
+ * @return Error::CONFIGURATION_ERROR if default configuration fails
+ */
 Error CAP1188Device::begin() {
     // Validate I2C is ready
     if (_i2c == nullptr) {
@@ -70,6 +117,14 @@ Error CAP1188Device::reset() {
     }
 }
 
+/**
+ * @brief Check if device is connected and responding
+ * 
+ * Verifies device connection by reading and validating the product ID.
+ * 
+ * @return true if device is connected and responding
+ * @return false if device is not detected or not responding
+ */
 bool CAP1188Device::isConnected() {
     uint8_t product_id;
     Error err = readRegister(REG_PRODUCT_ID, product_id);
@@ -185,6 +240,17 @@ DeviceConfig CAP1188Device::getConfiguration() const {
 }
 
 // Runtime configuration updates (granular)
+/**
+ * @brief Update touch sensitivity setting
+ * 
+ * Updates only the touch sensitivity setting without affecting
+ * other configuration parameters. This is an atomic operation.
+ * 
+ * @param sensitivity New touch sensitivity level
+ * @return Error::SUCCESS on successful update
+ * @return Error::NOT_INITIALIZED if device is not initialized
+ * @return Error::I2C_ERROR if I2C communication fails
+ */
 Error CAP1188Device::updateSensitivity(TouchSensitivity sensitivity) {
     if (!_initialized) return Error::NOT_INITIALIZED;
     

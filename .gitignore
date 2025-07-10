@@ -68,5 +68,6 @@ __pycache__/
 docs/_build/
 docs/html/
 docs/latex/
+docs/generated/
 .cache/
 .clangd

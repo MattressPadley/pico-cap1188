@@ -146,3 +146,29 @@ if(NOT HAS_PARENT)
         CAP1188_VERSION_PATCH=1
     )
 endif()
+
+# Documentation generation (optional)
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    # Set input and output files
+    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile)
+    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+    
+    # Request to configure the file
+    configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+    message(STATUS "Doxygen build configured")
+    
+    # Note the option ALL which allows to build the docs together with the application
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM)
+        
+    # Add docs to the default build if in standalone mode
+    if(NOT HAS_PARENT)
+        add_custom_target(docs_all ALL DEPENDS docs)
+    endif()
+else()
+    message(STATUS "Doxygen not found, cannot build documentation")
+endif()

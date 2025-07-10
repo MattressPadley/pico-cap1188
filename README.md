@@ -1,5 +1,53 @@
 # CAP1188 Library for Raspberry Pi Pico
 
+<!--toc:start-->
+- [CAP1188 Library for Raspberry Pi Pico](#cap1188-library-for-raspberry-pi-pico)
+  - [Features](#features)
+  - [Hardware Requirements](#hardware-requirements)
+  - [Quick Start](#quick-start)
+    - [1. Hardware Connections](#1-hardware-connections)
+    - [2. Basic Usage](#2-basic-usage)
+  - [Building](#building)
+    - [Prerequisites](#prerequisites)
+    - [Build Steps](#build-steps)
+      - [Using Just (Recommended)](#using-just-recommended)
+      - [Using CMake Directly](#using-cmake-directly)
+    - [Flash to Pico](#flash-to-pico)
+      - [Using picotool (Recommended)](#using-picotool-recommended)
+      - [Manual Method](#manual-method)
+    - [Monitoring Serial Output](#monitoring-serial-output)
+  - [Library Structure](#library-structure)
+  - [API Reference](#api-reference)
+    - [Device Initialization](#device-initialization)
+    - [Touch Sensing](#touch-sensing)
+    - [LED Control](#led-control)
+    - [Power Management](#power-management)
+    - [Configuration](#configuration)
+    - [Runtime Configuration Changes](#runtime-configuration-changes)
+      - [Granular Updates (Individual Settings)](#granular-updates-individual-settings)
+      - [Batch Updates (Setting Groups)](#batch-updates-setting-groups)
+      - [Smart Configuration Merging](#smart-configuration-merging)
+      - [Per-Channel Runtime Updates](#per-channel-runtime-updates)
+      - [Runtime Configuration Features](#runtime-configuration-features)
+  - [Design Pattern: Pre-Initialized I2C](#design-pattern-pre-initialized-i2c)
+    - [Benefits](#benefits)
+    - [Multi-Device Usage](#multi-device-usage)
+  - [Examples](#examples)
+    - [Runtime Configuration Demo](#runtime-configuration-demo)
+  - [Configuration Options](#configuration-options)
+    - [Device Configuration](#device-configuration)
+    - [Channel Configuration](#channel-configuration)
+    - [Advanced LED Configuration](#advanced-led-configuration)
+  - [Troubleshooting](#troubleshooting)
+    - [Common Issues](#common-issues)
+    - [Debug Features](#debug-features)
+      - [I2C Debugging](#i2c-debugging)
+  - [Advanced Features](#advanced-features)
+    - [Interrupt Handling](#interrupt-handling)
+    - [Multiple Touch Patterns](#multiple-touch-patterns)
+    - [Custom Sensor Calibration](#custom-sensor-calibration)
+<!--toc:end-->
+
 A comprehensive C++ library for the CAP1188 8-channel capacitive touch sensor, designed for use with the Raspberry Pi Pico SDK.
 
 ## Features
@@ -125,11 +173,13 @@ make
 ```
 
 The build system will automatically:
+
 - Download Pico SDK if `PICO_SDK_PATH` is not set
 - Configure cross-platform build settings
 - Build the library and examples
 
 This will build:
+
 - `libcap1188.a` - The main library
 - `basic_touch.uf2` - Example application
 
